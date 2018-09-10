@@ -36,8 +36,6 @@ void serialRX(void); //the interrupt function
 void serialSetup(unsigned char mode);
 void reset_serial_para(void);
 
-void INC(unsigned char *val);
-
 bit confirmData(unsigned char *var_unsure, unsigned char *var_sure, unsigned char len);
 unsigned char strlen(unsigned char *string);
 void delay(unsigned int time);
