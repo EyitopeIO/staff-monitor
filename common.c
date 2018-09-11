@@ -1,13 +1,12 @@
 #include <common.h>
 
 volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
-volatile unsigned char index = 0;
-volatile bit RXDcmpt = 0;
-volatile unsigned char num_CR_LF = 0; //count number of times we see \r\n
-volatile bit got_carriage_ret = 0;
-volatile bit got_line_feed = 0;
-volatile unsigned char occurred_cr_lf = 0;
+volatile unsigned int index = 0;
+volatile unsigned int occurred_cr_lf = 0;
 
+bit got_carriage_ret = 0;
+bit got_line_feed = 0;
+bit RXDcmpt = 0;
 sbit TX = P0^0;
 sbit RX = P0^1;
 
@@ -16,7 +15,7 @@ void send(unsigned char val){
 	while(!TI);
 	TI=0;
 }
-void serialAll(unsigned char *serial_data){
+void sendCommand(unsigned char *serial_data){
 	while(*serial_data != 0x00){ //null character is 0x00;
 		TX = 0; //debug
 		send(*serial_data); //SBUF = *serial_data; 
@@ -35,36 +34,41 @@ void serialRX(void) interrupt 4{
 	(3) RI is the receive interrupt flag from a register.
 			Also set to zero.
 	*/
-	
-	RX = 0; //debug
+	unsigned char rcvd;
+	rcvd = SBUF;
+	P1 = 0x00; //debug
 	if(RI){
-		rcvd_serial_data[index] = SBUF;
-		if(SBUF == '\r'){
-			got_carriage_ret = 1;
-		}
-		if(SBUF == '\n'){
-			got_line_feed = 1;
-		}
+		rcvd_serial_data[index] = rcvd;
 		if(rcvd_serial_data[index] == '\n' && rcvd_serial_data[index-1] == '\r'){
 			occurred_cr_lf++;
+			RXDcmpt = 1;
+		}
+		if (rcvd == '\r'){
+			got_carriage_ret = 1;
+		}
+		if( rcvd == '\n'){
+			got_line_feed = 1;
 		}
 		index++;
 	}
+	P1 = 0xFF;
 	RI = 0;
-	RX = 1;
 }
 
-void serialSetup(unsigned char global_interrupt){
+void serialSetup(unsigned char mode){
+	TR0 = 0; //to be sure timer 0 goes offf
 	SCON = 0x50;
 	TMOD = 0x20;
 	TH1 =  0xFD; // to set the baud rate to 9600
 	TR1 = 1; //to start the timer 
 	ES = 1; //enable serial port interrupt 7
-	switch(global_interrupt){
+	switch(mode){
 		case 't':
-			EA = 1;
+			EA= 1;
+			break;
 		case 'f':
 			EA = 0;
+			break;
 	}
 	index = 0; RXDcmpt = 0; got_carriage_ret = 0; got_line_feed = 0;
 }
@@ -76,7 +80,7 @@ void reset_serial_para(void){
 	writeToArray(0x00, RX_BUFFER_SIZE, rcvd_serial_data);
 	RXDcmpt = 0;
 	index = 0;
-	num_CR_LF = 0;
+	occurred_cr_lf = 0;
 	got_carriage_ret = 0;
 	got_line_feed = 0;
 }
@@ -118,8 +122,9 @@ void writeToArray(unsigned char val, unsigned char array_lenght, unsigned char *
 	}
 }
 bit confirmData(unsigned char *var_unsure,unsigned char *var_sure,unsigned char len){
+	/* This checks for your text within jargons */ 
 	int i, j;
-	for(i=0,j=0; i<len; i++){
+	for(i=0,j=0; i<strlen(var_unsure); i++){
 		if(var_unsure[i] == var_sure[j]){
 			while(len--){
 				if(var_unsure[i++] != var_sure[j++]){
@@ -130,8 +135,4 @@ bit confirmData(unsigned char *var_unsure,unsigned char *var_sure,unsigned char 
 		}
 	}
 }
-void INC(unsigned char *val){
-	/* used to show where in the code is executing */
-	(*val)++;
-	P0 = *val;
-}
+
