@@ -31,7 +31,7 @@ X  -> stop scan AOK
 #define COMMON_H
 
 void send(unsigned char val);
-void serialAll(unsigned char *serial_data);
+void sendCommand(unsigned char *serial_data);
 void serialRX(void); //the interrupt function
 void serialSetup(unsigned char mode);
 void reset_serial_para(void);
