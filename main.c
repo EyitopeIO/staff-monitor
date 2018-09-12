@@ -20,12 +20,8 @@ void main(){
 	delay(2); 
 	serialSetup('t');
 	reset_serial_para();
-	sendCommand("START\r\n"); //debug: see on serial monitor
-	sendCommand("Just before checking data\r\n");
-	while(occurred_cr_lf != 2);
-	if(confirmData(rcvd_serial_data,STARTUP_RESP,strlen(STARTUP_RESP))){
-		P2 = 0x00;
-	}
+	modemSetup();
+	
 	P0 = 0x00;
 	while(1);
 }
