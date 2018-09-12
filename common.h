@@ -23,18 +23,23 @@ JC  -> clear whitelist AOK
 X  -> stop scan AOK
 */
 
-
+#define COMMON_H
 
 #include <REG52.h>
 #define RX_BUFFER_SIZE 50
 #define STARTUP_RESP "+PBREADY"
-#define COMMON_H
+#define OK "OK"
+#define NETWORK "+CREG: 0,1"
+
+
 
 void send(unsigned char val);
 void sendCommand(unsigned char *serial_data);
 void serialRX(void); //the interrupt function
 void serialSetup(unsigned char mode);
 void reset_serial_para(void);
+
+int modemSetup(void);
 
 bit confirmData(unsigned char *var_unsure, unsigned char *var_sure, unsigned char len);
 unsigned char strlen(unsigned char *string);
