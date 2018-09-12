@@ -10,6 +10,52 @@ bit RXDcmpt = 0;
 sbit TX = P0^0;
 sbit RX = P0^1;
 
+int modemSetup(void){
+	/* In auto baudrate mode, modem needs you to send something
+	so it can detect baudrate */
+	sendCommand("START\r\n") ;
+	while(occurred_cr_lf != 2); //wait till its done receiving
+	if(confirmData(rcvd_serial_data,STARTUP_RESP,strlen(STARTUP_RESP))){
+		P2 = 0x00;
+	}
+	reset_serial_para();
+	P2 = 0xFF;
+	
+	
+	sendCommand("ATE0\r");
+	while(occurred_cr_lf != 2);
+	if(confirmData(rcvd_serial_data,OK,strlen(OK))){
+		P2 = 0x00;
+	}
+	reset_serial_para();
+	P2 = 0xFF;
+	
+	sendCommand("AT+CREG?\r");
+	while(occurred_cr_lf != 2);
+	if(confirmData(rcvd_serial_data,NETWORK,strlen(NETWORK))){
+		P2 = 0x00;
+	}
+	reset_serial_para();	
+	P2 = 0xFF;
+	
+	sendCommand("AT+CSCS=\"GSM\"\r");
+	while(occurred_cr_lf != 2);
+	if(confirmData(rcvd_serial_data,OK, strlen(OK))){
+		P2 = 0x00;
+	}
+	reset_serial_para();
+	P2 = 0xFF;
+	
+	sendCommand("AT+CMGF=1\r");
+	while(occurred_cr_lf != 2);
+	if(confirmData(rcvd_serial_data,OK, strlen(OK))){
+		P2 = 0x00;
+	}
+	reset_serial_para();
+	P2 = 0xFF;
+	return 1;
+}
+	
 void send(unsigned char val){
 	SBUF = val;
 	while(!TI);
