@@ -10,49 +10,98 @@ bit RXDcmpt = 0;
 sbit TX = P0^0;
 sbit RX = P0^1;
 
-int modemSetup(void){
+bit bluetoothStart(unsigned char setup_para){
+	unsigned char trial;
+	unsigned int time; //actual value doesn't matter much
+	switch(setup_para){
+/************************************************/		
+		case 'i': //if at startup. 'i' is for initial
+			time = 3000;
+			trial = 3;
+			reset_serial_para();
+			while(trial--){
+				sendCommand("$$$"); //character to enter command mode
+				while(time--); //delay
+				if(confirmData(rcvd_serial_data, COMMAND_MODE_RESP, strlen(COMMAND_MODE_RESP))) return 1;
+			}
+			sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about modem's response
+			break;
+/***********************************************/
+			
+		case 'n': //'n' is for normal
+			sendCommand("F\r"); //begin scan
+		//process the data from here
+			break;
+	}
+}
+		
+	
+bit modemSetup(unsigned char trials){
 	/* In auto baudrate mode, modem needs you to send something
 	so it can detect baudrate */
-	sendCommand("START\r\n") ;
-	while(occurred_cr_lf != 2); //wait till its done receiving
-	if(confirmData(rcvd_serial_data,STARTUP_RESP,strlen(STARTUP_RESP))){
-		P2 = 0x00;
+	const unsigned char trial_lc = trials;
+	P2 = 0xFE; // turn on P0^0
+	while(trials--){
+		sendCommand("START\r\n");
+		while(occurred_cr_lf != 2); //wait till its done receiving
+		if(confirmData(rcvd_serial_data,STARTUP_RESP,strlen(STARTUP_RESP))){
+			reset_serial_para();
+			break;
+		}
+		reset_serial_para();
 	}
-	reset_serial_para();
-	P2 = 0xFF;
 	
-	
-	sendCommand("ATE0\r");
-	while(occurred_cr_lf != 2);
-	if(confirmData(rcvd_serial_data,OK,strlen(OK))){
-		P2 = 0x00;
+	trials = trial_lc;
+	P2 = 0xFC;  //turn on P0^1
+	while(trials--){
+		sendCommand("ATE0\r"); //turn off echo
+		while(occurred_cr_lf != 2);
+		if(confirmData(rcvd_serial_data,OK,strlen(OK))){
+			reset_serial_para();
+			break;
+		}
+		reset_serial_para();
 	}
-	reset_serial_para();
-	P2 = 0xFF;
 	
-	sendCommand("AT+CREG?\r");
-	while(occurred_cr_lf != 2);
-	if(confirmData(rcvd_serial_data,NETWORK,strlen(NETWORK))){
-		P2 = 0x00;
+	trials = trial_lc;
+	P2 = 0xF8; //turn on P0^2
+	while(trials--){
+		sendCommand("AT+CREG?\r"); //is network ready>
+		while(occurred_cr_lf != 2);
+		if(confirmData(rcvd_serial_data,NETWORK,strlen(NETWORK))){
+			reset_serial_para();
+			break;
+		}
+		reset_serial_para();
 	}
-	reset_serial_para();	
-	P2 = 0xFF;
 	
-	sendCommand("AT+CSCS=\"GSM\"\r");
-	while(occurred_cr_lf != 2);
-	if(confirmData(rcvd_serial_data,OK, strlen(OK))){
-		P2 = 0x00;
+	trials = trial_lc;
+	P2 = 0xF0; //turn on P0^3
+	while(trials--){
+		sendCommand("AT+CSCS=\"GSM\"\r"); //set GSM to text mode
+		while(occurred_cr_lf != 2);
+		if(confirmData(rcvd_serial_data,OK, strlen(OK))){
+			reset_serial_para();
+			break;
+		}
+		reset_serial_para();
 	}
-	reset_serial_para();
-	P2 = 0xFF;
 	
-	sendCommand("AT+CMGF=1\r");
-	while(occurred_cr_lf != 2);
-	if(confirmData(rcvd_serial_data,OK, strlen(OK))){
-		P2 = 0x00;
+	trials = trial_lc;
+	P2 = 0xE0; //turn on P0^4
+	while(trials--){
+		sendCommand("AT+CMGF=1\r");
+		while(occurred_cr_lf != 2);
+		if(confirmData(rcvd_serial_data,OK, strlen(OK))){
+			reset_serial_para();
+			break;
+		}
+		reset_serial_para();
 	}
-	reset_serial_para();
-	P2 = 0xFF;
+	/*
+	set phone number to send text to, then send the text
+	*/
+	P2 = 0x00; //done
 	return 1;
 }
 	
@@ -181,4 +230,3 @@ bit confirmData(unsigned char *var_unsure,unsigned char *var_sure,unsigned char 
 		}
 	}
 }
-
