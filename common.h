@@ -1,49 +1,37 @@
+#include <REG52.h>
+#include <common.h>
 
-
+#
 /*
+*** NOTES ***
+(1) Modem data format \r\n<data>\r\n
+
 *** ALGORITHM ***
-
-(1)Command the RN4871 to enter command mode
-(2) Tell it to scan for advertisment data and inteprete. In our case, we only need this for what's below only.
-
-%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%
-
-(3) When you find it, exit command mode
-
-*** SETTINGS ***
-baud rate = 9600
-SA,2  -> No security AOK/ERR
-SB,09  -> baud rate 9600 AOK/ERR
-SC,0  -> beacon disabled AOK/ERR
-SF,1  -> factory reset ERR/it reboots
-&C  -> use local MAC to advertise AOK
-F[,<interval>,<window>]  -> scan
-JA,0,<MAC> --> add to white list AOK/ERR
-JC  -> clear whitelist AOK
-X  -> stop scan AOK
+1. Wait for detected motion from PIR
+2. If motion, beginning scanning immediately
+3. Note all visible bluetooth devices and send to server
+4. Server notes the ID and takes attendance
+5. For now, we'd just send via GSM
 */
 
-#define COMMON_H
+extern bit RXDcmpt;
+extern volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
+extern volatile unsigned int occurred_cr_lf;
+extern volatile unsigned int index;
+		 
 
-#include <REG52.h>
-#define RX_BUFFER_SIZE 50
-#define STARTUP_RESP "+PBREADY"
-#define OK "OK"
-#define NETWORK "+CREG: 0,1"
-#define COMMAND_MODE_RESP "CMD>"
-
-
-
-void send(unsigned char val);
-void sendCommand(unsigned char *serial_data);
-void serialRX(void); //the interrupt function
-void serialSetup(unsigned char mode);
-void reset_serial_para(void);
-
-bit modemSetup(unsigned char trials);
-bit bluetoothStart(unsigned char setup_para); //enter command mode and begin scanning
-
-bit confirmData(unsigned char *var_unsure, unsigned char *var_sure, unsigned char len);
-unsigned char strlen(unsigned char *string);
-void delay(unsigned int time);
-void writeToArray(unsigned char val, unsigned char array_lenght, unsigned char *array_address);
+void main(){
+	P0 = 0xFF;
+	P1 = 0xFF;
+	P2 = 0x00;
+	delay(5);
+	P2 = 0xFF;
+	serialSetup('t'); //set for baudrate = 9600
+	reset_serial_para();
+	modemSetup((unsigned char)3); //repeat each command 3 times if failure
+	bluetoothStart('i'); //bluetooth setup
+	P0 = 0x00;
+	
+	while(1); //Pending overall logic
+}
+	
