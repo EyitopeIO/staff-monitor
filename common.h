@@ -30,6 +30,7 @@ X  -> stop scan AOK
 #define STARTUP_RESP "+PBREADY"
 #define OK "OK"
 #define NETWORK "+CREG: 0,1"
+#define COMMAND_MODE_RESP "CMD>"
 
 
 
@@ -39,10 +40,10 @@ void serialRX(void); //the interrupt function
 void serialSetup(unsigned char mode);
 void reset_serial_para(void);
 
-int modemSetup(void);
+bit modemSetup(unsigned char trials);
+bit bluetoothStart(unsigned char setup_para); //enter command mode and begin scanning
 
 bit confirmData(unsigned char *var_unsure, unsigned char *var_sure, unsigned char len);
 unsigned char strlen(unsigned char *string);
 void delay(unsigned int time);
 void writeToArray(unsigned char val, unsigned char array_lenght, unsigned char *array_address);
-
