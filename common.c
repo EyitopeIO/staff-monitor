@@ -1,11 +1,15 @@
 #include <common.h>
 
 volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
+unsigned char transmit_to_modem[TX_MODEM_BUFFER_SIZE];
 volatile unsigned int index = 0;
-volatile unsigned int occurred_cr_lf = 0;
+volatile unsigned int got_cr_lf = 0;
+unsigned char ble_or_modem; //'b' for bluetooth, 'm' for modem
 
 bit got_carriage_ret = 0;
 bit got_line_feed = 0;
+bit got_ble_delim = 0;
+bit got_comma = 0;
 bit RXDcmpt = 0;
 sbit TX = P0^0;
 sbit RX = P0^1;
@@ -16,20 +20,25 @@ bit bluetoothStart(unsigned char setup_para){
 	switch(setup_para){
 /************************************************/		
 		case 'i': //if at startup. 'i' is for initial
-			time = 3000;
+			time = 5000;
 			trial = 3;
 			reset_serial_para();
 			while(trial--){
 				sendCommand("$$$"); //character to enter command mode
 				while(time--); //delay
-				if(confirmData(rcvd_serial_data, COMMAND_MODE_RESP, strlen(COMMAND_MODE_RESP))) return 1;
+				if(confirmData(rcvd_serial_data, "CMD>", strlen("CMD>"))) return 1;
 			}
 			sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about modem's response
 			break;
 /***********************************************/
 			
-		case 'n': //'n' is for normal
+		case 's': //'s' is for scan
+			reset_serial_para();
 			sendCommand("F\r"); //begin scan
+			while(!got_ble_delim);
+			got_ble_delim = 0;
+			
+		
 		//process the data from here
 			break;
 	}
@@ -43,7 +52,7 @@ bit modemSetup(unsigned char trials){
 	P2 = 0xFE; // turn on P0^0
 	while(trials--){
 		sendCommand("START\r\n");
-		while(occurred_cr_lf != 2); //wait till its done receiving
+		while(got_cr_lf != 2); //wait till its done receiving
 		if(confirmData(rcvd_serial_data,STARTUP_RESP,strlen(STARTUP_RESP))){
 			reset_serial_para();
 			break;
@@ -55,7 +64,7 @@ bit modemSetup(unsigned char trials){
 	P2 = 0xFC;  //turn on P0^1
 	while(trials--){
 		sendCommand("ATE0\r"); //turn off echo
-		while(occurred_cr_lf != 2);
+		while(got_cr_lf != 2);
 		if(confirmData(rcvd_serial_data,OK,strlen(OK))){
 			reset_serial_para();
 			break;
@@ -67,7 +76,7 @@ bit modemSetup(unsigned char trials){
 	P2 = 0xF8; //turn on P0^2
 	while(trials--){
 		sendCommand("AT+CREG?\r"); //is network ready>
-		while(occurred_cr_lf != 2);
+		while(got_cr_lf != 2);
 		if(confirmData(rcvd_serial_data,NETWORK,strlen(NETWORK))){
 			reset_serial_para();
 			break;
@@ -79,7 +88,7 @@ bit modemSetup(unsigned char trials){
 	P2 = 0xF0; //turn on P0^3
 	while(trials--){
 		sendCommand("AT+CSCS=\"GSM\"\r"); //set GSM to text mode
-		while(occurred_cr_lf != 2);
+		while(got_cr_lf != 2);
 		if(confirmData(rcvd_serial_data,OK, strlen(OK))){
 			reset_serial_para();
 			break;
@@ -91,7 +100,7 @@ bit modemSetup(unsigned char trials){
 	P2 = 0xE0; //turn on P0^4
 	while(trials--){
 		sendCommand("AT+CMGF=1\r");
-		while(occurred_cr_lf != 2);
+		while(got_cr_lf != 2);
 		if(confirmData(rcvd_serial_data,OK, strlen(OK))){
 			reset_serial_para();
 			break;
@@ -129,22 +138,25 @@ void serialRX(void) interrupt 4{
 	(3) RI is the receive interrupt flag from a register.
 			Also set to zero.
 	*/
-	unsigned char rcvd;
-	rcvd = SBUF;
+	unsigned char rcvd = SBUF;
 	P1 = 0x00; //debug
 	if(RI){
-		rcvd_serial_data[index] = rcvd;
-		if(rcvd_serial_data[index] == '\n' && rcvd_serial_data[index-1] == '\r'){
-			occurred_cr_lf++;
-			RXDcmpt = 1;
+		if(rcvd == '\r') got_carriage_ret = 1;
+		if(rcvd == '\n') got_line_feed = 1;
+		if(rcvd == '%')  got_ble_delim = 1;
+		if(rcvd == ',')  got_comma = 1;
+		switch(ble_or_modem){
+			case 'm': //for modem
+				rcvd_serial_data[index] = rcvd;
+				if(rcvd_serial_data[index] == '\n' && rcvd_serial_data[index-1] == '\r'){
+					got_cr_lf++;
+					RXDcmpt = 1;
+				}
+				index++;
+				break;
+			case 'b':
+				break;
 		}
-		if (rcvd == '\r'){
-			got_carriage_ret = 1;
-		}
-		if( rcvd == '\n'){
-			got_line_feed = 1;
-		}
-		index++;
 	}
 	P1 = 0xFF;
 	RI = 0;
@@ -165,19 +177,18 @@ void serialSetup(unsigned char mode){
 			EA = 0;
 			break;
 	}
-	index = 0; RXDcmpt = 0; got_carriage_ret = 0; got_line_feed = 0;
 }
-
-
 
 void reset_serial_para(void){
 	// Use this after sending serial data
 	writeToArray(0x00, RX_BUFFER_SIZE, rcvd_serial_data);
 	RXDcmpt = 0;
 	index = 0;
-	occurred_cr_lf = 0;
+	got_cr_lf = 0;
 	got_carriage_ret = 0;
 	got_line_feed = 0;
+	got_ble_delim = 0;
+	got_comma = 0;
 }
 
 void delay(unsigned int time){
