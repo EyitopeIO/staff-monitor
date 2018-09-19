@@ -27,7 +27,7 @@ X  -> stop scan AOK
 
 #include <REG52.h>
 #define RX_BUFFER_SIZE 25
-#define TX_MODEM_BUFFER_SIZE 10
+#define TX_MODEM_BUFFER_SIZE 30 //for 5 times 6 bytes  
 #define STARTUP_RESP "+PBREADY"
 #define OK "OK"
 #define NETWORK "+CREG: 0,1"
