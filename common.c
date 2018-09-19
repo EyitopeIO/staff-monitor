@@ -6,6 +6,7 @@ volatile unsigned int index = 0;
 volatile unsigned int got_cr_lf = 0;
 unsigned char ble_or_modem; //'b' for bluetooth, 'm' for modem
 
+bit PIR = 0;
 bit got_carriage_ret = 0;
 bit got_line_feed = 0;
 bit got_ble_delim = 0;
@@ -28,14 +29,14 @@ bit bluetoothStart(unsigned char setup_para){
 				while(time--); //delay
 				if(confirmData(rcvd_serial_data, "CMD>", strlen("CMD>"))) return 1;
 			}
-			sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about modem's response
+			sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about the device's response
 			break;
 /***********************************************/
 			
 		case 's': //'s' is for scan
 			reset_serial_para();
 			sendCommand("F\r"); //begin scan
-			while(!got_ble_delim);
+			while(PIR);
 			got_ble_delim = 0;
 			
 		
@@ -192,7 +193,6 @@ void reset_serial_para(void){
 }
 
 void delay(unsigned int time){
-	unsigned char num_of_times = 0;
 	TMOD |= 0x01; //mode 1 of timer0
 	TMOD &= ~(1<<1); 
 	TMOD &= ~(1<<3); //use clock to count
@@ -201,17 +201,16 @@ void delay(unsigned int time){
 	TF0 = 0;
 	TR0 = 1; //start timer
 	while(time--){
-		while(num_of_times != 14){
+		while(1){
 			if(TF0){
-				num_of_times++;
 				TH0 = 0x00;
 				TL0 = 0x00;
 				TF0 = 0;
 				TR0 = 1;
+				break;
 			}
 		}
-		num_of_times = 0;
-		}
+	}
 }
 
 unsigned char strlen(unsigned char *string){
