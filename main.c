@@ -30,17 +30,18 @@ void main(){
 	ble_or_modem = 'm'; //set for modem
 	modemSetup((unsigned char)3); //repeat each command 3 times if failure
 	
-	ble_or_modem = 'b'; //set for bluetooth
-	bluetoothStart('i'); //inititialize bluetooth. 'i' for initialize
-	//bluetoothStart('n');
+	ble_or_modem = 'b'; //Set for bluetooth
+	bluetoothStart('i'); //Inititialize bluetooth. 'i' for initialize. It runs reset_serial_para()
+	//bluetoothStart('s');
 	P0 = 0x00;
-	
-	while(1){
+
 		//turn on external interrupt for PIR here
-		P1 = 0x00;
-		delay(6);
-		P1 = 0xFF;
-		delay(14);
-	}
+	bluetoothStart('s');
+	P1 = 0x00;
+	delay(6);
+	P1 = 0xFF;
+	delay(14);
+	serialSetup('t');
+	while(1);
 }
 	
