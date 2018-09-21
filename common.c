@@ -21,7 +21,7 @@ bit bluetoothStart(unsigned char setup_para){
 	switch(setup_para){
 /************************************************/		
 		case 'i': //if at startup. 'i' is for initial
-			time = 5000;
+			time = 5000; //choose w
 			trial = 3;
 			reset_serial_para();
 			while(trial--){
@@ -29,23 +29,20 @@ bit bluetoothStart(unsigned char setup_para){
 				while(time--); //delay
 				if(confirmData(rcvd_serial_data, "CMD>", strlen("CMD>"))) return 1;
 			}
-			sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about the device's response
+			//sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about the device's response
 			break;
 /***********************************************/
 			
 		case 's': //'s' is for scan
 			reset_serial_para();
 			sendCommand("F\r"); //begin scan
-			while(PIR);
+			//while(PIR); //PIR is the interrupt 0 pin to connect PIR
+			sendCommand("X\r"); //stop scan
 			got_ble_delim = 0;
-			
-		
-		//process the data from here
 			break;
 	}
 }
 		
-	
 bit modemSetup(unsigned char trials){
 	/* In auto baudrate mode, modem needs you to send something
 	so it can detect baudrate */
@@ -140,14 +137,13 @@ void serialRX(void) interrupt 4{
 			Also set to zero.
 	*/
 	unsigned char rcvd = SBUF;
+	unsigned char var;
 	P1 = 0x00; //debug
 	if(RI){
-		if(rcvd == '\r') got_carriage_ret = 1;
-		if(rcvd == '\n') got_line_feed = 1;
-		if(rcvd == '%')  got_ble_delim = 1;
-		if(rcvd == ',')  got_comma = 1;
 		switch(ble_or_modem){
 			case 'm': //for modem
+				if(rcvd == '\r') got_carriage_ret = 1;
+				if(rcvd == '\n') got_line_feed = 1;
 				rcvd_serial_data[index] = rcvd;
 				if(rcvd_serial_data[index] == '\n' && rcvd_serial_data[index-1] == '\r'){
 					got_cr_lf++;
@@ -156,7 +152,12 @@ void serialRX(void) interrupt 4{
 				index++;
 				break;
 			case 'b':
-				break;
+				/* In <common.h> is the data format. What's required here
+						is a way of storing just the address. transmit_to_modem
+						is an array to keep the addresses pending transmission.
+						Happy coding!
+				*/
+			
 		}
 	}
 	P1 = 0xFF;
@@ -192,7 +193,7 @@ void reset_serial_para(void){
 	got_comma = 0;
 }
 
-void delay(unsigned int time){
+void delay(unsigned int time){ //time in intervals of 71 ms.
 	TMOD |= 0x01; //mode 1 of timer0
 	TMOD &= ~(1<<1); 
 	TMOD &= ~(1<<3); //use clock to count
