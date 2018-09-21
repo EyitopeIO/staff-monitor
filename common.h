@@ -5,7 +5,9 @@
 
 (1)Command the RN4871 to enter command mode
 (2) Tell it to scan for advertisment data and inteprete. In our case, we only need this for what's below only.
+		BLE device appends "\r\n" for every BLE it finds
 
+%<address>,<type>,<RSSI>,Brcst:<data>%
 %DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%
 
 (3) When you find it, exit command mode
