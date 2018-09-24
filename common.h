@@ -8,7 +8,7 @@
 		BLE device appends "\r\n" for every BLE it finds
 
 %<address>,<type>,<RSSI>,Brcst:<data>%
-%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%
+%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%\r\n%FDE34...
 
 (3) When you find it, exit command mode
 
@@ -38,7 +38,8 @@ X  -> stop scan AOK
 
 void send(unsigned char val);
 void sendCommand(unsigned char *serial_data);
-void serialRX(void); //the interrupt function
+void serialRX(void); //serial interrupt function
+void pirHandle(void); //external interrupt function
 void serialSetup(unsigned char mode);
 void reset_serial_para(void);
 
