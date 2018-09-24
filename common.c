@@ -1,44 +1,57 @@
 #include <common.h>
 
 volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
-unsigned char transmit_to_modem[TX_MODEM_BUFFER_SIZE];
+volatile unsigned char transmit_to_modem[TX_MODEM_BUFFER_SIZE];
 volatile unsigned int index = 0;
 volatile unsigned int got_cr_lf = 0;
 unsigned char ble_or_modem; //'b' for bluetooth, 'm' for modem
+volatile unsigned char ble_delim_num = 0;
 
-bit PIR = 0;
+volatile bit PIR = 0; //flipped by INT0
 bit got_carriage_ret = 0;
 bit got_line_feed = 0;
-bit got_ble_delim = 0;
 bit got_comma = 0;
-bit RXDcmpt = 0;
+
 sbit TX = P0^0;
 sbit RX = P0^1;
+bit done = 0; //debug
+
+void pirHandle(void) interrupt 0{ //INT0
+	//turn on an LED to show it has seen something
+	//PIR is set to zero when scanning is complete
+	EX0 = 0;
+	PIR = 1;
+	ble_or_modem = 'b';
+	bluetoothStart('s');
+	//send message
+	EX0 = 1;
+}
 
 bit bluetoothStart(unsigned char setup_para){
 	unsigned char trial;
 	unsigned int time; //actual value doesn't matter much
 	switch(setup_para){
-/************************************************/		
-		case 'i': //if at startup. 'i' is for initial
-			time = 5000; //choose w
+		case 'i': //initialise
+			time = 5000;
 			trial = 3;
 			reset_serial_para();
 			while(trial--){
-				sendCommand("$$$"); //character to enter command mode
+				sendCommand("$$$"); //enter command mode
 				while(time--); //delay
 				if(confirmData(rcvd_serial_data, "CMD>", strlen("CMD>"))) return 1;
 			}
-			//sendCommand("SB,09\r"); //set baud rate to 9600. I don't care about the device's response
 			break;
-/***********************************************/
-			
-		case 's': //'s' is for scan
+		case 's': //scan
+			P1 = 0xF0; //debug
 			reset_serial_para();
 			sendCommand("F\r"); //begin scan
-			//while(PIR); //PIR is the interrupt 0 pin to connect PIR
+			while(!done); //debug, so it waits for me to type
+			sendCommand(transmit_to_modem); //debug. Send to serial monitor
+		//PIR is the interrupt 0 pin to connect PIR
 			sendCommand("X\r"); //stop scan
-			got_ble_delim = 0;
+			P1 = 0x00; //debug
+			PIR = 0;
+			P1 = 0xFF; //debug
 			break;
 	}
 }
@@ -47,6 +60,7 @@ bit modemSetup(unsigned char trials){
 	/* In auto baudrate mode, modem needs you to send something
 	so it can detect baudrate */
 	const unsigned char trial_lc = trials;
+	EX0 = 0; //disable INT0 
 	P2 = 0xFE; // turn on P0^0
 	while(trials--){
 		sendCommand("START\r\n");
@@ -137,7 +151,6 @@ void serialRX(void) interrupt 4{
 			Also set to zero.
 	*/
 	unsigned char rcvd = SBUF;
-	unsigned char var;
 	P1 = 0x00; //debug
 	if(RI){
 		switch(ble_or_modem){
@@ -147,7 +160,6 @@ void serialRX(void) interrupt 4{
 				rcvd_serial_data[index] = rcvd;
 				if(rcvd_serial_data[index] == '\n' && rcvd_serial_data[index-1] == '\r'){
 					got_cr_lf++;
-					RXDcmpt = 1;
 				}
 				index++;
 				break;
@@ -157,7 +169,25 @@ void serialRX(void) interrupt 4{
 						is an array to keep the addresses pending transmission.
 						Happy coding!
 				*/
-			
+				if(rcvd == ','){
+					got_comma = 1;
+					P0 = 0xFF; //debug
+				}
+				if(rcvd == '%'){
+					ble_delim_num++; //opening '%'
+					P0 = 0x0F; //debug
+				}
+				if(ble_delim_num == 2){
+					ble_delim_num = 0; //closing '%'
+					got_comma = 0; //prepare to get first comma after next opening of '%'
+					done = 1;
+				}
+				
+				//If opening '%' and you haven't seen a comma.
+				//Save until you see a comma
+				if(ble_delim_num == 1  && !got_comma){
+					transmit_to_modem[index++] = rcvd;
+				}
 		}
 	}
 	P1 = 0xFF;
@@ -184,12 +214,11 @@ void serialSetup(unsigned char mode){
 void reset_serial_para(void){
 	// Use this after sending serial data
 	writeToArray(0x00, RX_BUFFER_SIZE, rcvd_serial_data);
-	RXDcmpt = 0;
+	writeToArray(0x00, TX_MODEM_BUFFER_SIZE, transmit_to_modem);
 	index = 0;
 	got_cr_lf = 0;
 	got_carriage_ret = 0;
 	got_line_feed = 0;
-	got_ble_delim = 0;
 	got_comma = 0;
 }
 
