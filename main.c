@@ -1,7 +1,6 @@
 #include <REG52.h>
 #include <common.h>
 
-#
 /*
 *** NOTES ***
 (1) Modem data format \r\n<data>\r\n
@@ -10,8 +9,7 @@
 		would be built to work with this variable.
 */
 
-extern bit PIR; //used to check status of PIR
-extern bit RXDcmpt;
+extern bit PIR; //set by interrupt.
 extern unsigned char ble_or_modem;
 extern volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
 extern volatile unsigned int got_cr_lf;
@@ -27,21 +25,18 @@ void main(){
 	serialSetup('t'); //set timer for baudrate = 9600
 	reset_serial_para();
 	
-	ble_or_modem = 'm'; //set for modem
-	modemSetup((unsigned char)3); //repeat each command 3 times if failure
-	
-	ble_or_modem = 'b'; //Set for bluetooth
-	bluetoothStart('i'); //Inititialize bluetooth. 'i' for initialize. It runs reset_serial_para()
-	//bluetoothStart('s');
-	P0 = 0x00;
+	ble_or_modem = 'm'; 
+	modemSetup((unsigned char)3); 
 
-		//turn on external interrupt for PIR here
-	bluetoothStart('s');
-	P1 = 0x00;
-	delay(6);
-	P1 = 0xFF;
-	delay(14);
-	serialSetup('t');
-	while(1);
+	ble_or_modem = 'b';  //don't forget to set CTRL accordingly.
+	bluetoothStart('i'); //init
+	P0 = 0x00; //debug
+	EX0 = 1; //enable INT0
+	while(1){
+		P1 = 0x00;
+		delay(6);
+		P1 = 0xFF;
+		delay(14);
+	}
 }
 	
