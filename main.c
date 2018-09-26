@@ -4,39 +4,45 @@
 /*
 *** NOTES ***
 (1) Modem data format \r\n<data>\r\n
-(2) Use the global variable ble_or_modem to indicate
+(2) Global variable ble_or_modem tells if
 		MCU is working on the BLE device or MODEM. A multiplexer
 		would be built to work with this variable.
+(3) In the function rset_serial_para(), only using 't' as a parameter
+		has effect. Others are ignored; hence the purpose of rand.
 */
 
-extern bit PIR; //set by interrupt.
-extern unsigned char ble_or_modem;
-extern volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
-extern volatile unsigned int got_cr_lf;
-extern volatile unsigned int index;
-		 
+sbit PIR = P3^2; //PIR to be connected to this.
+sbit CTRL = P3^3; //for the multiplexer
+
+extern code unsigned char rand;  
+extern code const unsigned char HIGH;
+extern code const unsigned char PHIGH;
+extern code const unsigned char LOW;
+extern code const unsigned char PLOW;
 
 void main(){
-	P0 = 0xFF; 
-	P1 = 0xFF;
-	P2 = 0x00;
-	delay(5); //parameter is multiples of 71ms. Use 14 for 1s
-	P2 = 0xFF; //This and above is debug
+	P0 = PLOW; //port low
+	P1 = PLOW; //port high
+	P2 = PHIGH;
+	delay(5); //parameter is multiples of 71ms. Use 14 for just about 1 sec
+	P2 = PLOW; //This and above is debug
 	serialSetup('t'); //set timer for baudrate = 9600
-	reset_serial_para();
-	
-	ble_or_modem = 'm'; 
-	modemSetup((unsigned char)3); 
-
-	ble_or_modem = 'b';  //don't forget to set CTRL accordingly.
+	reset_serial_para(rand); 
+	P3 |= (1<<2); //set P3.2 as input
+	P3 &= ~(1<<3); //set P3.3 as output;
+	modemSetup((unsigned char)3);
 	bluetoothStart('i'); //init
-	P0 = 0x00; //debug
-	EX0 = 1; //enable INT0
+	P0 = PHIGH; //debug
 	while(1){
-		P1 = 0x00;
+		P1 = PHIGH;
+		if(!PIR){ //0 for high; 1 for low
+			pirHandle();
+			reset_serial_para(rand);
+		}
 		delay(6);
-		P1 = 0xFF;
-		delay(14);
+		P1 = PLOW;
+		delay(6);
+		
 	}
 }
 	
