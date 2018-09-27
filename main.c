@@ -11,9 +11,9 @@
 		has effect. Others are ignored; hence the purpose of rand.
 */
 
-sbit PIR = P3^2; //PIR to be connected to this.
 sbit CTRL = P3^3; //for the multiplexer
 
+extern bit PIR;
 extern code unsigned char rand;  
 extern code const unsigned char HIGH;
 extern code const unsigned char PHIGH;
@@ -30,18 +30,19 @@ void main(){
 	reset_serial_para(rand); 
 	P3 |= (1<<2); //set P3.2 as input
 	P3 &= ~(1<<3); //set P3.3 as output;
-	modemSetup((unsigned char)3);
+	//modemSetup((unsigned char)3);
 	bluetoothStart('i'); //init
 	P0 = PHIGH; //debug
+	EX0 = 1; //enable INT0 interrupt
 	while(1){
 		P1 = PHIGH;
-		if(!PIR){ //0 for high; 1 for low
+		if(PIR){ //0 for high; 1 for low
 			pirHandle();
-			reset_serial_para(rand);
+			reset_serial_para('t'); //clear all modem & BLE
 		}
-		delay(6);
+		delay(2);
 		P1 = PLOW;
-		delay(6);
+		delay(2);
 		
 	}
 }
