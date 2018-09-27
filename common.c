@@ -4,7 +4,7 @@
 #define RX_BUFFER_SIZE 25
 #define TX_MODEM_BUFFER_SIZE 27 //for 2 times 12 bytes plus two times '%' 
 
-sbit PIR = P3^2;
+bit PIR = 0; //set by interrupt on P3^2
 sbit CTRL = P3^3;
 
 code const unsigned char* OK = "\r\nOK\r\n";
@@ -42,19 +42,29 @@ bit got_carriage_ret = 0;
 bit got_line_feed = 0;
 bit got_comma = 0;
 
+//Set to 1 by default.
+//Whoever doesnt't want incoming data to dusturb...
+//should turn it off.
+bit ready_for_data = 1;
+
 sbit TX = P0^0;
 sbit RX = P0^1;
-bit done = 0; //debug
+//bit done = 0; //debug
 
 void pirHandle(void){
 	//turn on an LED to show it has seen something
 	//PIR is set to zero when scanning is complete
+	EX0 = 0; //disable INT0
+	PIR = 0; //clear PIR flag; set by interruot
 	bluetoothStart('s');
 	sendSMS(transmit_to_modem);
+	EX0 = 1;
 }
-
+void pir_interrupt(void) interrupt 0 {
+	PIR = 1;
+}
 bit confirmData(unsigned char *var_unsure,const unsigned char *var_sure,unsigned char len){
-	/* This checks for your text within jargons */ 
+	/* This checks for your text within jargons */
 	int i, j;
 	for(i=0,j=0; i<stringLen(var_unsure); i++){
 		if(var_unsure[i] == var_sure[j]){
@@ -67,8 +77,7 @@ bit confirmData(unsigned char *var_unsure,const unsigned char *var_sure,unsigned
 		}
 	}
 }
-bit bluetoothStart(unsigned char setup_para){
-	unsigned char trial;
+bit bluetoothStart(unsigned char setup_para){	unsigned char trial;
 	unsigned short time; //actual value doesn't matter much
 	set_TX_channel('b');
 	switch(setup_para){
@@ -86,7 +95,7 @@ bit bluetoothStart(unsigned char setup_para){
 			P1 = 0xF0; //debug
 			reset_serial_para(rand);
 			sendCommand(BLE_START_SCAN_OUT); //begin scan
-			while(!done); //debug, so it waits for me to type
+			while(index_trans < TX_MODEM_BUFFER_SIZE); 
 			//while(PIR); //stop scan when PIR goes low.
 		//PIR is the interrupt 0 pin to connect PIR
 			sendCommand(BLE_STOP_SCAN_OUT); //stop scan
@@ -217,7 +226,7 @@ void serialRX(void) interrupt 4{
 	*/
 	unsigned char rcvd = SBUF;
 	P1 = 0x00; //debug
-	if(RI){
+	if(RI && ready_for_data){
 		switch(ble_or_modem){
 			case 'm': //for modem
 				if(rcvd == '\r') got_carriage_ret = 1;
@@ -229,22 +238,8 @@ void serialRX(void) interrupt 4{
 				index++;
 				break;
 			case 'b':
-				if(rcvd == ','){
-					got_comma = 1;
-					P0 = 0x00; //debug
-				}
-				if(rcvd == '%'){
-					ble_delim_num++; //opening '%'
-					P0 = 0x0F; //debug
-				}
-				if(ble_delim_num == 2){
-					ble_delim_num = 0; //closing '%'
-					got_comma = 0; //prepare to get first comma after next opening of '%'
-					done = 1;
-				}
-				if(ble_delim_num == 1  && !got_comma){ //save until comma
-					transmit_to_modem[index_trans++] = rcvd;
-				}
+				//to process data here.
+				
 		}
 	}
 	P1 = 0xFF;
@@ -252,14 +247,14 @@ void serialRX(void) interrupt 4{
 }
 
 void serialSetup(unsigned char mode){
-	TR0 = 0; //to be sure timer 0 goes offf
-	SCON = 0x50;
-	TMOD = 0x20;
-	TH1 =  0xFD; // to set the baud rate to 9600
-	TR1 = 1; //to start the timer 
-	ES = 1; //enable serial port interrupt 7
 	switch(mode){
 		case 't':
+			TR0 = 0; //to be sure timer 0 goes offf
+			SCON = 0x50;
+			TMOD = 0x20;
+			TH1 =  0xFD; // to set the baud rate to 9600
+			TR1 = 1; //to start the timer 
+			ES = 1; //enable serial port interrupt 7
 			EA= 1;
 			break;
 		case 'f':
@@ -281,7 +276,7 @@ void reset_serial_para(unsigned char mode){
 			got_carriage_ret = 0;
 			got_line_feed = 0;
 			got_comma = 0;
-			done = 0;
+			//done = 0;
 	}
 }
 
