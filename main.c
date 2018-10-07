@@ -1,65 +1,50 @@
-#include <REG52.h>
-#include <common.h>
+
 
 /*
-*** NOTES ***
-(1) Modem data format \r\n<data>\r\n
-(2) Global variable ble_or_modem tells if
-		MCU is working on the BLE device or MODEM. A multiplexer
-		would be built to work with this variable.
-(3) In the function rset_serial_para(), only using 't' as a parameter
-		has effect. Others are ignored; hence the purpose of rand.
-(4) Ensure serialSetup() is run at least once after every use of delay()
-(5) ready_for_data is a variable cleared by a function that doesn't want to
-	be disturbed with incoming serial data.
+*** ALGORITHM ***
+(1) Setup modem and BLE
+(2) PIR going high triggers interrupt that sets a flag. MCU polls the flag.
+(3) If high, turn off interrupt, scan, send to modem, resume. In future, 
+		transmission would be to some server
+
+
+Below is the format of the bluetooth data.
+
+%<address>,<type>,<RSSI>,Brcst:<data>%
+%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%\r\n%BFF2140B33604,0,FF,Brcst:F2010317DA590002BA3812233445566778899AABB123AFEFF040B78604BB%\r\n
+%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%\r\n%BFF2140B33604,0,FF,Brcst:F2010317DA590002BA3812233445566778899AABB123AFEFF040B78604BB%\r\n
+*** SETTINGS ***
+baud rate = 9600
+SA,2  -> No security AOK/ERR
+SB,09  -> baud rate 9600 AOK/ERR
+SC,0  -> beacon disabled AOK/ERR
+SF,1  -> factory reset ERR/it reboots
+&C  -> use local MAC to advertise AOK
+F[,<interval>,<window>]  -> scan
+JA,0,<MAC> --> add to white list AOK/ERR
+JC  -> clear whitelist AOK
+X  -> stop scan AOK
 */
 
-sbit CTRL = P3^3; //for the multiplexer
+#include <REG52.h>
 
-extern bit PIR;
-extern bit ready_for_data;
-extern code unsigned char rand;  
-extern code const unsigned char HIGH;
-extern code const unsigned char PHIGH;
-extern code const unsigned char LOW;
-extern code const unsigned char PLOW;
-extern volatile unsigned char transmit_to_modem[TX_MODEM_BUFFER_SIZE];
-extern volatile unsigned char ble_case;
+#define RX_BUFFER_SIZE 25
+#define TX_MODEM_BUFFER_SIZE 25 //for 2 times 12 bytes plus two times '%' 
 
-void main()
-{
-	P0 = PLOW; //port low
-	P1 = PLOW; //port high
-	P2 = PHIGH;
-	delay(5); //parameter is multiples of 71ms. Use 14 for just about 1 sec
-	P2 = PLOW; //This and above is debug
-	serialSetup('t'); //set timer for baudrate = 9600
-	reset_serial_para(); 
-	P3 |= (1<<2); //set P3.2 as input
-	P3 &= ~(1<<3); //set P3.3 as output;
-	modemSetup((unsigned char)3);
-	bluetoothStart('i'); //init
-	P0 = PHIGH; //debug
-	ready_for_data = 1;
-	EX0 = 1; //enable INT0 interrupt
-	while(1)
-	{
-		P1 = PHIGH;
-		if(PIR)
-		{ //0 for high; 1 for low
-			EX0 = 0; //disable INT0
-			PIR = 0; //clear PIR flag; set by interruot
-			ble_case = 1;
-			serialSetup('t');
-			reset_serial_para();
-			bluetoothStart('s');
-			sendSMS(transmit_to_modem);
-			reset_serial_para();
-			EX0 = 1;		
-		}
-		delay(1);
-		P1 = PLOW;
-		delay(1);	
-	}
-}
-	
+
+void send(unsigned char val);
+void sendCommand(const unsigned char *serial_data);
+void serialRX(void); //serial interrupt function
+void serialSetup(unsigned char mode);
+void reset_serial_para(void);
+void set_TX_channel(unsigned char mode);
+
+bit sendSMS(unsigned char *message); //bit sendSMS(unsigned char message);
+bit modemSetup(unsigned char trials);
+bit bluetoothStart(unsigned char setup_para); //enter command mode and begin scanning
+
+bit confirmData(unsigned char *var_unsure, const unsigned char *var_sure, unsigned char len);
+unsigned char length(unsigned char *string);
+void delay(unsigned int time);
+void writeToArray(unsigned char val, unsigned char array_lenght, unsigned char *array_address);
+unsigned char* copy(unsigned char *dest, unsigned char *source, unsigned char len);
