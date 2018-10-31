@@ -11,8 +11,8 @@
 Below is the format of the bluetooth data.
 
 %<address>,<type>,<RSSI>,Brcst:<data>%
-%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%\r\n%BFF2140B33604,0,FF,Brcst:F2010317DA590002BA3812233445566778899AABB123AFEFF040B78604BB%
-
+%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%\r\n%BFF2140B33604,0,FF,Brcst:F2010317DA590002BA3812233445566778899AABB123AFEFF040B78604BB%\r\n
+%DCF740B78604,1,C8,Brcst:0201041AFF590002150112233445566778899AABBCCDDEEFF040B78604BB%\r\n%BFF2140B33604,0,FF,Brcst:F2010317DA590002BA3812233445566778899AABB123AFEFF040B78604BB%\r\n
 *** SETTINGS ***
 baud rate = 9600
 SA,2  -> No security AOK/ERR
@@ -26,22 +26,25 @@ JC  -> clear whitelist AOK
 X  -> stop scan AOK
 */
 
-#define COMMON_H
 #include <REG52.h>
+
+#define RX_BUFFER_SIZE 30
+#define TX_MODEM_BUFFER_SIZE 25 //for 2 times 12 bytes plus two times '%' 
+
 
 void send(unsigned char val);
 void sendCommand(const unsigned char *serial_data);
 void serialRX(void); //serial interrupt function
-void pirHandle();
 void serialSetup(unsigned char mode);
-void reset_serial_para(unsigned char mode);
+void reset_serial_para(void);
 void set_TX_channel(unsigned char mode);
 
-bit sendSMS(unsigned char *message); //bit sendSMS(unsigned char message);
-bit modemSetup(unsigned char trials);
-bit bluetoothStart(unsigned char setup_para); //enter command mode and begin scanning
+void sendSMS(unsigned char *message); //bit sendSMS(unsigned char message);
+void modemSetup1(void);
+void bluetoothStart(unsigned char setup_para); //enter command mode and begin scanning
 
-bit confirmData(unsigned char *var_unsure, const unsigned char *var_sure, unsigned char len);
-unsigned char stringLen(unsigned char *string);
+//bit confirmData(unsigned char *var_unsure, const unsigned char *var_sure, unsigned char len);
+unsigned char length(unsigned char *string);
 void delay(unsigned int time);
 void writeToArray(unsigned char val, unsigned char array_lenght, unsigned char *array_address);
+unsigned char* copy(unsigned char *dest, unsigned char *source, unsigned char len);
