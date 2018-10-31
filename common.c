@@ -1,14 +1,17 @@
 #include <common.h>
+#include <string.h>
 
 bit PIR = 0; //set by interrupt on P3^2
 sbit CTRL = P3^3;
 
-code const unsigned char *OK = "\r\nOK\r\n";
+code const unsigned char *AT_OUT = "AT\r";
+code const unsigned char *OK_IN = "OK";
 code const unsigned char *MODEM_TEST_STRING_OUT = "START\r";
 code const unsigned char *MODEM_ECHO_OUT = "ATE0\r";
-code const unsigned char *MODEM_NETWORK_IN = "\r\n+CREG: 0,1\r\n";
-code const unsigned char *MODEM_NETWORK_OUT = "AT+CREG\r";
-code const unsigned char *MODEM_STARTUP_RESP_IN = "\r\n+PBREADY\r\n";
+code const unsigned char *MODEM_NETWORK_IN = "+CREG: 0,1";
+code const unsigned char *MODEM_NETWORK_OUT = "AT+CREG?\r";
+code const unsigned char *MODEM_STARTUP_RESP_IN = "MODEM:STARTUP";
+code const unsigned char *PBREADY_IN = "+PBREADY";
 code const unsigned char *MODEM_GSM_MODE_OUT = "AT+CSCS=\"GSM\"\r";
 code const unsigned char *MODEM_TEXT_MODE_OUT = "AT+CMGF=1\r";
 code const unsigned char *MODEM_PHONE_NUMBER_SELECT = "AT+CMGS=";
@@ -19,9 +22,8 @@ code const unsigned char *BLE_STOP_SCAN_OUT = "X\r";
 code const unsigned char *BLE_COMMAND_READY_IN = "CMD>";
 
 code const unsigned char *phone = "\"+2348142357637\"\r";
-code const unsigned char rand ='z'; //default char for reset_serial_para()
 
-code const unsigned char HIGH = 0;
+code const unsigned char HIGH = 0; //debug!
 code const unsigned char PHIGH = 0x00;
 code const unsigned char LOW = 1;
 code const unsigned char PLOW = 0xFF;
@@ -31,55 +33,29 @@ volatile unsigned char rcvd_serial_data[RX_BUFFER_SIZE];
 volatile unsigned char transmit_to_modem[TX_MODEM_BUFFER_SIZE];
 volatile unsigned char index = 0;
 volatile unsigned char index_trans = 0; //reset this to zero after sending to modem
-volatile unsigned char got_cr_lf = 0;
-unsigned char ble_or_modem; //'b' for bluetooth, 'm' for modem
 volatile unsigned char ble_case = 1;
-
-bit got_carriage_ret = 0;
-bit got_line_feed = 0;
+volatile unsigned char modem_case = 1;
+volatile unsigned char modem_data_count = 0;
+unsigned char ble_or_modem; //'b' for bluetooth, 'm' for modem
 
 //Set to 1 by default.
 //Whoever doesnt't want incoming data to dusturb...
 //should turn it off.
 bit ready_for_data = 1;
 
-sbit TX = P0^0;
-sbit RX = P0^1;
+bit modem_data_complete = 0;
 
 void pir_interrupt(void) interrupt 0 
 {
 	PIR = 1;
 }
-bit confirmData(unsigned char *var_unsure,const unsigned char *var_sure,unsigned char len)
-{
-	/* This checks for your text within jargons */
-	unsigned char i, j;
-	ready_for_data = 0;
-	for(i=0,j=0; i<length(var_unsure); i++)
-	{
-		if(var_unsure[i] == var_sure[j])
-		{
-			while(len--)
-			{
-				if(var_unsure[i++] != var_sure[j++])
-				{
-					ready_for_data = 1;
-					return 0;
-				}
-			}
-			ready_for_data = 1;
-			return 1;
-			//break; // successful comparison
-		}
-	}
-	ready_for_data = 1;
-	return 0;
-}
-bit bluetoothStart(unsigned char setup_para)
+
+void bluetoothStart(unsigned char setup_para)
 {
 	unsigned char trial;
 	unsigned char time; //actual value doesn't matter much
 	set_TX_channel('b');
+	ready_for_data = 1;
 	switch(setup_para)
 	{
 		case 'i': //initialise
@@ -88,21 +64,42 @@ bit bluetoothStart(unsigned char setup_para)
 			while(trial--)
 			{
 				sendCommand(BLE_COMMAND_MODE_START_OUT); //enter command mode
-				while(time--); //delay
-				if(confirmData(rcvd_serial_data, BLE_COMMAND_READY_IN, length(BLE_COMMAND_READY_IN))) return 1;
-			}
+				
+				//Enough time for data to enter
+				while(time--);
+				
+				ready_for_data = 0;
+				if(strstr(rcvd_serial_data, BLE_COMMAND_READY_IN) != NULL)
+				{
+					break;
+				}
+				ready_for_data = 1;
+			}			
 			break;
 		case 's': //scan
+			ready_for_data = 1;
+			trial = 5;
 			P1 = PHIGH; //debug
-			sendCommand(BLE_START_SCAN_OUT); //begin scan
+			sendCommand(BLE_START_SCAN_OUT);
+			while(trial--)
+			{	
+				//ble_case=2 when opening flag
+				//of BLE data is received
+				if(ble_case >= 2)
+				{
+					break;
+				}
+				else
+				{
+					sendCommand(BLE_START_SCAN_OUT);
+				}
+			}
 			while(index_trans != TX_SIZE); //take only as much as array can hold
-			//PIR is the interrupt 0 pin to connect PIR
 			sendCommand(BLE_STOP_SCAN_OUT); //stop scan
 			P1 = 0x00; //debug
-			break;
 	}
 }
-bit sendSMS(unsigned char *message)
+void sendSMS(unsigned char *message)
 {
 	unsigned char count = 255; //actual number doesn't matter.
 	unsigned char *last_element;
@@ -117,88 +114,145 @@ bit sendSMS(unsigned char *message)
 	sendCommand(message);
 	send(0x1A);
 	ready_for_data = 1;
-	return 1;
 }
-	
-bit modemSetup(unsigned char trials)
+void modemSetup1(void)
 {
-	/* In auto baudrate mode, modem needs you to send something
-	so it can detect baudrate */
-	const unsigned char trial_lc = trials;
+	volatile unsigned char state = 2;
+	
+	//Enough time for modem 
+	//to get itself ready (30s)
+	delay(420); 
+	
+	serialSetup('t');
+	reset_serial_para();
 	set_TX_channel('m');
-	P2 = 0xFE; // turn on P0^0
-	while(trials--)
+	while(1)
 	{
-		sendCommand(MODEM_TEST_STRING_OUT);
-		while(got_cr_lf != 2); //wait till its done receiving
-		if(confirmData(rcvd_serial_data,MODEM_STARTUP_RESP_IN,length(MODEM_STARTUP_RESP_IN)))
+		if(state > 6)
 		{
-			reset_serial_para(); //only 't' has effect
 			break;
 		}
-		reset_serial_para();
-	}
-	
-	trials = trial_lc;
-	P2 = 0xFC;  //turn on P0^1
-	while(trials--)
-	{
-		sendCommand(MODEM_ECHO_OUT); //turn off echo
-		while(got_cr_lf != 2);
-		if(confirmData(rcvd_serial_data,OK,length(OK)))
+		switch(state)
 		{
-			reset_serial_para();
-			break;
+			case 2:
+				P2 = 0xFC;  //turn on P0^1
+				sendCommand(AT_OUT);
+				while(!modem_data_complete);
+				ready_for_data = 0;
+				if((strstr(rcvd_serial_data,OK_IN) != NULL))
+				{
+					sendCommand("Pass 2.");
+					state = 3;
+				}
+				else
+				{
+					sendCommand("Failed 2. ");
+					sendCommand(rcvd_serial_data);
+					state = 2;
+				}
+				delay(14);
+				serialSetup('t');
+				ready_for_data = 1;
+				reset_serial_para();
+				break;
+			case 3:
+				P2 = 0xF8; //turn on P0^2
+				sendCommand(MODEM_ECHO_OUT); //turn off echo
+				while(!modem_data_complete); //wait till its done receiving
+				ready_for_data = 0;
+				if(strstr(rcvd_serial_data, OK_IN) != NULL)
+				//if(confirmData(rcvd_serial_data,OK_IN,length(OK_IN)))
+				{
+					sendCommand("Pass 3.");
+					state = 4;
+				}
+				else
+				{
+					state = 3;
+					sendCommand("Failed 3. ");
+					sendCommand(rcvd_serial_data);
+				}
+				delay(14);
+				serialSetup('t');
+				ready_for_data = 1;
+				reset_serial_para();
+				break;
+			case 4:
+				P2 = 0xF0; //turn on P0^3
+				sendCommand(MODEM_NETWORK_OUT); //is network ready?
+				while(!modem_data_complete); //wait till its done receiving
+				ready_for_data = 0;
+				if(strstr(rcvd_serial_data,MODEM_NETWORK_IN) != NULL)
+				/* If "+CREG:0, 3" after a couple of trials,
+					you could signal the user that something
+					is wrong with an indicator LED. It means
+					network registration was denied. 
+				*/
+				//if(confirmData(rcvd_serial_data,MODEM_NETWORK_IN,length(MODEM_NETWORK_IN)))
+				{
+					sendCommand("Pass 4.");
+					state = 5;	
+				}
+				else
+				{
+					sendCommand("Failed 4. ");
+					state = 4;
+					sendCommand(rcvd_serial_data);
+				}
+				delay(14);
+				serialSetup('t');
+				ready_for_data = 1;
+				reset_serial_para();
+				break;
+			case 5:
+				P2 = 0xE0; //turn on P0^4
+				sendCommand(MODEM_GSM_MODE_OUT); //set GSM to text mode
+				while(!modem_data_complete); //wait till its done receiving
+				ready_for_data = 0;
+				if(strstr(rcvd_serial_data,OK_IN) != NULL)
+				//if(confirmData(rcvd_serial_data,OK_IN, length(OK_IN)))
+				{
+					sendCommand("Pass 5.");
+					state = 6;
+				}
+				else
+				{
+					sendCommand("Failed 5. ");
+					state = 5;
+					sendCommand(rcvd_serial_data);
+				}
+				delay(14);
+				serialSetup('t');
+				ready_for_data = 1;
+				reset_serial_para();
+				break;
+			case 6:
+				P2 = 0xC0; //turn on P0^5
+				sendCommand(MODEM_TEXT_MODE_OUT);
+				while(!modem_data_complete); //wait till its done receiving
+				ready_for_data = 0;
+				if(strstr(rcvd_serial_data,OK_IN) != NULL)
+				//if(confirmData(rcvd_serial_data,OK_IN, length(OK_IN)))
+				{
+					sendCommand("Pass 6. ");
+					state = 7;
+				}
+				else
+				{
+					sendCommand("Failed 6. ");					
+					state = 6;
+					sendCommand(rcvd_serial_data);
+				}
+				delay(14);
+				serialSetup('t');
+				ready_for_data = 1;
+				reset_serial_para();
+				break;
 		}
-		reset_serial_para();
 	}
-	
-	trials = trial_lc;
-	P2 = 0xF8; //turn on P0^2
-	while(trials--){
-		sendCommand(MODEM_NETWORK_OUT); //is network ready>
-		while(got_cr_lf != 2);
-		if(confirmData(rcvd_serial_data,MODEM_NETWORK_IN,length(MODEM_NETWORK_IN)))
-		{
-			reset_serial_para();
-			break;
-		}
-		reset_serial_para();
-	}
-	
-	trials = trial_lc;
-	P2 = 0xF0; //turn on P0^3
-	while(trials--)
-	{
-		sendCommand(MODEM_GSM_MODE_OUT); //set GSM to text mode
-		while(got_cr_lf != 2);
-		if(confirmData(rcvd_serial_data,OK, length(OK)))
-		{
-			reset_serial_para();
-			break;
-		}
-		reset_serial_para();
-	}
-	
-	trials = trial_lc;
-	P2 = 0xE0; //turn on P0^4
-	while(trials--){
-		sendCommand(MODEM_TEXT_MODE_OUT);
-		while(got_cr_lf != 2);
-		if(confirmData(rcvd_serial_data,OK, length(OK)))
-		{
-			reset_serial_para();
-			break;
-		}
-		reset_serial_para();
-	}
-	/*
-	set phone number to send text to, then send the text
-	*/
-	P2 = 0x00; //done
-	return 1;
+	P2 = 0x00;
 }
-	
+
 void send(unsigned char val)
 {
 	SBUF = val;
@@ -212,11 +266,9 @@ void sendCommand(unsigned char *serial_data)
 	//while(*serial_data != 0x00){ //null character is 0x00;
 	while(counter != len)
 	{
-		TX = 0; //debug
 		send(*serial_data); //SBUF = *serial_data; 
 		serial_data++;
 		counter++;
-		TX = 1; //debug
 	}
 	TI = 0;
 }
@@ -227,13 +279,14 @@ void set_TX_channel(unsigned char mode)
 		case 'm':
 			sendCommand(BLE_COMMAND_MODE_STOP_OUT); //tell BLE to stop listening to commands
 			ble_or_modem = 'm';
-			CTRL = HIGH;
+			CTRL = LOW; //It is open drain. Keep it off to allow a voltage there.
 			break;
 		case 'b':
 			ble_or_modem = 'b';
-			CTRL = LOW;
+			CTRL = HIGH;
 	}
 }
+
 void serialRX(void) interrupt 4
 {
 	/*
@@ -249,17 +302,44 @@ void serialRX(void) interrupt 4
 	{
 		switch(ble_or_modem)
 		{
-			case 'm': //for modem
-				if(rcvd == '\r') got_carriage_ret = 1;
-				if(rcvd == '\n') got_line_feed = 1;
-				rcvd_serial_data[index] = rcvd;
-				if(rcvd_serial_data[index] == '\n' && rcvd_serial_data[index-1] == '\r')
+			case 'm':
+				switch(modem_case) //initialised to 1 as global var.
 				{
-					got_cr_lf++;
-				}
-				index++;
-				break;
-					
+					case 1:
+						if(rcvd == 0x0D) // '\r'
+						{
+							modem_case = 2;
+						}
+						break;
+					case 2:
+						if(rcvd == 0x0A) // '\n'
+						{
+							modem_case = 3;
+						}
+						break;
+					case 3:
+						rcvd_serial_data[index++] = rcvd;
+						if(rcvd == 0x0D)
+						{
+							modem_case = 4;
+						}
+						break;
+					case 4:
+						if(rcvd == 0x0A)
+						{
+							//Last element in the array
+							//assuming we've gotten all we need.
+							index-=1;
+							modem_case = 1;
+							modem_data_complete = 1;
+						}
+						else //or else, it's useful data
+						{
+							rcvd_serial_data[index++] = rcvd;
+							modem_case = 3;
+						}
+						break;
+				}	
 			case 'b':
 				switch(ble_case)
 				{
@@ -269,7 +349,6 @@ void serialRX(void) interrupt 4
 							ble_case = 2;
 						}
 						break;
-						
 					case 2:
 						if(rcvd == '\r' || rcvd == '\n')
 						{
@@ -292,7 +371,7 @@ void serialRX(void) interrupt 4
 					}
 				}
 			}
-	RI = 0;
+	RI = 0; 
 }
 
 void serialSetup(unsigned char mode)
@@ -320,14 +399,15 @@ void reset_serial_para()
 	index_trans = 0;
 	writeToArray(0x00, RX_BUFFER_SIZE, rcvd_serial_data);
 	index = 0;
-	got_cr_lf = 0;
-	got_carriage_ret = 0;
-	got_line_feed = 0;
+	//got_cr_lf = 0;
+	//got_carriage_ret = 0;
+	//got_line_feed = 0;
+	modem_data_complete = 0;
 }
 
 void delay(unsigned int time)
 {	
-	//time in intervals of 71 ms.
+	//time=1 gives about 71 ms.
 	TMOD |= 0x01; //mode 1 of timer0
 	TMOD &= ~(1<<1); 
 	TMOD &= ~(1<<3); //use clock to count
@@ -337,6 +417,7 @@ void delay(unsigned int time)
 	TR0 = 1; //start timer
 	while(time--)
 	{
+		//flash indicator here
 		while(1)
 		{
 			if(TF0)
